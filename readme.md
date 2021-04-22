@@ -111,3 +111,101 @@ struct file_operations {
   unsigned long nmap_supported_flags;
   int (*open) (struct inode *, struct file *);
   int (*flush) (struct file *, fl_owner_t id);
+  int (*release) (struct inode *, struct file *);
+  int (*fsync) (struct file *, loff_t, loff_t, int datasync);
+  int (*fasync) (int, struct file *, int);
+  int (*lock) (struct file *, int, struct file_lock *);
+  ssize_t (*sendpage) (struct file *, struct page *, int, size_t, loff_t *, int);
+  unsigned long (*get_unmapped_area) (struct file *, unsigned long, unsigned long, unsigned long, unsigned long);
+  int (*check_flags) (int);
+  int (*flock) (struct file *, int, struct file_lock *);
+  ssize_t (*splice_write) (struct pipe_inode_info *, struct file *, loff_t *, size_t, unsigned int);
+  ssize_t (*splice_read) (struct file *, loff_t *, struct pipe_inode_info *, size_t, unsigned int);
+  int (*setlease) (struct file *, long, struct file_lock **, void **);
+  long (*fallocate) (struct file *file, int mode, loff_t offset, loff_t len);
+  void (*show_fdinfo) (struct seq_file *m, struct file *f);
+#ifndef CONFIG_MMU
+  unsigned (*nmap_capabilities) (struct file *);
+#endif
+  ssize_t (*copy_file_range) (struct file *, loff_t, struct file *, loff_t, size_t, unsigned int);
+  loff_t (*remap_file_range) (
+    struct file *file_in,
+    loff_t pos_in,
+    struct file *file_out,
+    loff_t pos_out,
+    loff_t len,
+    unsigned int remap_flags
+  );
+  int (*fadvise) (struct file *, loff_t, loff_t, int);
+} __randomize_layout;
+```
+
+If this structure contains functions that aren't required for your driver, you can still use the device file without implementing them. A pointer to an unimplemented function can simply be set to 0. After that, the system will take care of implementing the function and make it behave normally. In our case, we'll just implement the `read` function.
+
+As we're going to ensure the operation of only a single type of device with our Linux driver, our `file_operations` structure will be global and static. After it's created, we'll need to fill it statically like this:
+
+```c
+#include <linux/fs.h>
+static struct file_operations simple_driver_fops =
+{
+  .owner = THIS_MODULE,
+  .read  = device_file_read,
+};
+```
+
+The declaration of the `THIS_MODULE` macro is contained in the `linux/export.h` header file. We'll transform the macro into a pointer to the module structure of the required module. Later, we'll write the body of the function with a prototype, but for now we have only the `device_file_read` pointer to it:
+
+```c
+ssize_t device_file_read (struct file *, char *, size_t, loff_t *);
+```
+
+The `file_operations` structure allows us to develop several functions that will register and revoke the registration of the device file. To register a device file, we use the following code:
+
+```c
+static int device_file_major_number = 0;
+static const char device_name[] = "Simple-driver";
+int register_device(void)
+{
+  int result = 0;
+  printk( KERN_NOTICE "Simple-driver: register_device() is called.\n" );
+  result = register_chrdev( 0, device_name, &simple_driver_fops );
+  if (result < 0)
+  {
+    printk( KERN_WARNING "Simple-driver: can\'t register character device with error code = %i\n", result );
+    return result;
+  }
+
+  device_file_major_number = result;
+  printk( KERN_NOTICE "Simple-driver: registered character device with major number = %i and minor numbers 0...255\n", device_file_major_number );
+  return 0;
+}
+```
+
+`device_file_major_number` is a global variable that contains the major device number. When the lifetime of the driver expires, this global variable will be used to revoke the registration of the device file.
+
+In the code above, we've added the `printk` function that logs kernel messages. Pay attention to the `KERN_NOTICE` and `KERN_WARNING` prefixes in all listed `printk` format strings. `NOTICE` and `WARNING` indicate the priority level of the a message. Levels range from insignificant (`KERN_DEBUG`) to critical (`KERN_EMERG`), alerting about kernel instability. This is the only difference between the `printk` function and the `printf` library function.
+
+# The `printk` function
+
+The `printk` function forms a string, which we add to the circular buffer. From there the `klog` daemon reads it and sends it to the system log. Implementing the `printk` allows us to call this function from any point in the kernel. Use this function carefully, as it may cause overflow of the circular buffer, meaning the oldest message will not be logged.
+
+Our next step is writing a function for unregistering the device file. If a device file is successfully registered, the value of the `device_file_major_number` will not be 0. This value allows us to revoke the registration of a file using the `unregister_chrdev` function, which we declare in the `linux/fs.h` file. The major device number is the first parameter of this function, followed by a string containing the device name. The `register_chrdev` and the `unregister_chrdev` functions have similar contents.
+
+To unregister a device, we use the following code:
+
+```c
+void unregister_device(void)
+{
+  printk( KERN_NOTICE "Simple-driver: unregister_device() is called\n" );
+  if (device_file_major_number != 0)
+  {
+    unregister_chrdev(device_file_major_number, device_name);
+  }
+}
+```
+
+The next step in implementing functions for our module is allocating and using memory in user mode. Let's see how it's done.
+
+# References
+
+- https://www.apriorit.com/dev-blog/195-simple-driver-for-linux-os
