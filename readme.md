@@ -271,6 +271,57 @@ static ssize_t device_file_read(
 
 With this function, the code for our driver is ready. Now it's time to build the kernel module and see if it works as expected.
 
+# Building the kernel module
+
+In modern kernel versions, the `makefile` does most of the building for a developer. It starts the kernel build system and provides the kernel with information about the components required to build the module.
+
+A module built from a single source file requires a single string in the `makefile`. After creating this file, you only need to initiate the kernel build system with the `obj-m := source_file_name.o` command. As you can see, here we've assigned the source file name to the module - the `*.ko` file.
+
+If there are several source files, only two strings are required for the kernel build:
+
+```
+obj-m := module_name.o
+module_name-objs := source_1.o source_2.o ... source_n.o
+```
+
+To initialize the kernel build system and build the module, we need to use the ``make -C KERNEL_MODULE_BUILD_SYSTEM_FOLDER M=`pwd` modules`` command. To clean up the build folder, we use the ``make -C KERNEL_MODULES_BUILD_SYSTEM_FOLDER M=`pwd` clean`` command.
+
+The module build system is commonly located in ``/lib/modules/`uname -r`/build``. Now it's time to prepare the module build system. To build our first module, execute the `make modules_prepare` command from the folder where the build system is located.
+
+Finally, we'll combine everything we've learned into once `makefile`:
+
+```
+TARGET_MODULE:=simple-module
+
+ifneq ($(KERNELRELEASE),)
+  # If we are running by kernel building system
+  $(TARGET_MODULE)-objs := main.o device_file.o
+  obj-m := $(TARGET_MODULE).
+else
+  # If we running without kernel build system
+  BUILDSYSTEM_DIR:=/lib/modules/$(shell uname -r)/build
+  PWD:=$(shell pwd)
+
+all:
+  # run kernel build system to make module
+  $(MAKE) -C $(BUILDSYSTEM_DIR) M=$(PWD) modules
+
+clean:
+  # run kernel build system to cleanup in current directory
+  $(MAKE) -C $(BUILDSYSTEM_DIR) M=$(PWD) clean
+
+load:
+  insmod ./$(TARGET_MODULE).ko
+
+unload:
+  rmmod ./$(TARGET_MODULE).ko
+endif
+```
+
+The `load` target loads the build module and the `unload` target deletes it from the kernel.
+
+In our tutorial, we've used code from `main.c` and `device_file.c` to compile a driver. The resulting driver is named `simple-module.ko`. Let's see how to use it.
+
 # References
 
 - https://www.apriorit.com/dev-blog/195-simple-driver-for-linux-os
