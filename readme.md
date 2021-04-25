@@ -206,6 +206,71 @@ void unregister_device(void)
 
 The next step in implementing functions for our module is allocating and using memory in user mode. Let's see how it's done.
 
+# Using memory allocated in user mode
+
+The `read` function we're going to write will read characters from a device. The signature of this function must be appropriate for the function from the `file_operations` structure:
+
+```c
+ssize_t (*read) (struct file *filep, char *buffer, size_t len, loff_t *offset);
+```
+
+Let's look at the `filep` parameter - the pointer to the `file` structure. This `file` structure allows us to get necessary infomation about the file we're working with, data related to this file, and more. The data we've read is allocated in the user space at the address specified by the second parameter - `buffer`. The number of bytes to be read is defined in the `len` parameter, and we start reading bytes from a certain offset defined in the `offset` parameter. After executing the function, the number of bytes that have been successfully read must be returned. Then we must refresh the offset.
+
+To work with information from the device file, the user allocates a special buffer in the user-mode address space. Then, the `read` function copies the information to this buffer. The address to which a pointer from the user space points and the address in the kernel address space may have different values. That's why we cannot simply dereference the pointer.
+
+When working with these pointers, we have a set of specific macros and functions we declare in the `linux/uaccess.h` file. The most suitable function in our case is `copy_to_user`. Its name speaks for itself: it copies specific data from the kernel buffer to the buffer allocated in the user space. It also verifies if a pointer is valid and if the buffer size is large enough. Here's the code for the `copy_to_user` prototype:
+
+```c
+long copy_to_user(void __user *to, const void * from, unsigned long n);
+```
+
+First of all, this function must receive three parameters:
+
+- A pointer to the buffer
+- A pointer to the data source
+- The number of bytes to be copied
+
+If there are any errors in execution, the function will return a value other than 0. In case of successful execution, the value will be 0. The `copy_to_user` function contains the `__user` macro that documents the process. Also, this function allows us to find out if the code uses pointers from the address space correctly. This is done using `Sparse`, an analyzer for static code. To be sure that it works correctly, always mark the user address space pointers as `__user`.
+
+Here's the code for implementing the `read` function:
+
+```c
+#include <linux/uaccess.h>
+static const char    g_s_Hello_World_string[] = "Hello world from kernel mode!\n\0";
+static const ssize_t g_s_Hello_World_size     = sizeof(g_s_Hello_World_string);
+static ssize_t device_file_read(
+  struct file *file_ptr,
+  char __user *user_buffer,
+  size_t count,
+  loff_t *position
+)
+{
+  printk(KERN_NOTICE "Simple-driver: Device file is read at offset = %i, read bytes count = %u\n", (int) (*position), (unsigned int) count);
+  /* If position is behind the end of a file we have nothing to read */
+  if((*position) >= g_s_Hello_World_size)
+  {
+    return 0;
+  }
+  
+  /* If a user tries to read more than we have, read only as many bytes as we have */
+  if(((*position) + count) > g_s_Hello_World_size)
+  {
+    count = g_s_Hello_World_size - (*position);
+  }
+  
+  if(copy_to_user(user_buffer, g_s_Hello_World_string + (*position), count) != 0)
+  {
+    return -EFAULT;
+  }
+  
+  /* Move reading position */
+  (*position) += count;
+  return count;
+}
+```
+
+With this function, the code for our driver is ready. Now it's time to build the kernel module and see if it works as expected.
+
 # References
 
 - https://www.apriorit.com/dev-blog/195-simple-driver-for-linux-os
