@@ -322,6 +322,32 @@ The `load` target loads the build module and the `unload` target deletes it from
 
 In our tutorial, we've used code from `main.c` and `device_file.c` to compile a driver. The resulting driver is named `simple-module.ko`. Let's see how to use it.
 
+# Loading and using the module
+
+To load the module, we have to execute the `make load` command from the source file folder. After this, the name of the driver is added to the `/proc/modules` file, while the device that the module registers is added to the `/proc/devices` file. The added records look like this:
+
+```
+Character devices:
+  1 mem
+  4 tty
+  4 ttyS
+  ...
+  250 Simple-driver
+  ...
+```
+
+The first three records contains the name of the added device and the major device number with which it's associated. The minor number range (0-255) allows device files to be created in the `/dev` virtual file system.
+
+Then we need to create the special character file for our major number with the `mknod /dev/simple-driver c 250 0` command.
+
+After we've created the device file, we need to perform the final verification to make sure that what we've done works as expected. To verify, we can use the `cat` command to display the device file contents:
+
+```
+cat /dev/simple-driver
+```
+
+If we see the contents of our driver, it works correctly!
+
 # References
 
 - https://www.apriorit.com/dev-blog/195-simple-driver-for-linux-os
