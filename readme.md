@@ -251,18 +251,18 @@ static ssize_t device_file_read(
   {
     return 0;
   }
-  
+
   /* If a user tries to read more than we have, read only as many bytes as we have */
   if(((*position) + count) > g_s_Hello_World_size)
   {
     count = g_s_Hello_World_size - (*position);
   }
-  
+
   if(copy_to_user(user_buffer, g_s_Hello_World_string + (*position), count) != 0)
   {
     return -EFAULT;
   }
-  
+
   /* Move reading position */
   (*position) += count;
   return count;
