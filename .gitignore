@@ -7,3 +7,8 @@ build
 Module.symvers
 modules.order
 *.mod
+*.mod.cmd
+*.ko.cmd
+*.ko
+*.symvers.cmd
+*.order.cmd

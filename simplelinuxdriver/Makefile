@@ -1,4 +1,4 @@
-TARGET_MODULE := simplemodule
+TARGET_MODULE := simplekernelmodule
 # If we are running by kernel building system
 ifneq ($(KERNELRELEASE),)
 	$(TARGET_MODULE)-objs := main.o device_file.o
